@@ -194,15 +194,17 @@ Downloading: https://repo.maven.apache.org/maven2/com/hbakkum/app-parent/1.$%7Bb
         Could not find artifact com.hbakkum:app-parent:pom:1.${build.number} in central (https://repo.maven.apache.org/maven2) -> [Help 1]
 {% endhighlight %}
 
-Notice how when maven is trying to resolve the parent pom of the com.hbakkum:app-core:jar:1.local dependency, that it does not use
-a path with the resolved version for the pom, rather it uses the unresolved property placeholder version: /com/hbakkum/app-parent/1.$%7Bbuilder.number%7D/app-parent-1.$%7builder.number%7D.pom
+Notice how when maven is trying to resolve the parent pom of the **com.hbakkum:app-core:jar:1.local** dependency, that it does not use
+a path with the resolved version for the pom, rather it uses the unresolved property placeholder version:
+
+**/com/hbakkum/app-parent/1.$%7Bbuilder.number%7D/app-parent-1.$%7builder.number%7D.pom**
+
 The parent pom never gets installed (rightly so) under this path and thus the dependency resolution fails. This will also occur when building an external maven project that depends on any of these
 modules too.
 
 ### The Maven Flatten Plugin
 Fortunately, there is a maven plugin that can resolve this issue. It was a little difficult to find, but after reading the discussions
- on [MNG-5576](https://issues.apache.org/jira/browse/MNG-5576) I found [this link](http://www.mojohaus.org/flatten-maven-plugin/)
- to the Maven Flatten Plugin.
+ on [MNG-5576](https://issues.apache.org/jira/browse/MNG-5576) I found the [Maven Flatten Plugin](http://www.mojohaus.org/flatten-maven-plugin/).
 
 The Maven Flatten Plugin can be used to generate an alternative version of your projects pom file that maven will then use to install and deploy.
 Some of the features of this generated pom include merging in the parent pom information (and then removing the parent pom reference) and resolving all
@@ -210,22 +212,27 @@ property placeholders, thus addressing the issue described above.
 
 This plugin does solve the problem, but there is an issue you need to look out for (and one that became a bit of a time sink to debug).
 You'll notice that the plugin writes the generated pom file into the modules root directory (as opposed to the target directory) and the plugin has an explicit goal to clean this file up as part of the
-maven clean phase. But I found this a tad annoying and questioned why the default location is not within the modules target directory.
+maven clean phase.
+
+I found this a tad annoying and questioned why the default location is not within the modules target directory.
 There is plugin configuration to control the output directory of the generated pom though, so I was tempted to change this to be inside the target directory.
-This should come at a huge warning though (see github issue I created for a summary: https://github.com/mojohaus/flatten-maven-plugin/issues/50). Upon making this
-change it was noticed that my integration tests were no longer run during the maven build. After a lot of debugging and reading through the flatten plugin source code,
-I uncovered the cause of this issue. The flatten plugin uses [this method](http://maven.apache.org/ref/3.1.1/apidocs/org/apache/maven/project/MavenProject.html#setFile(java.io.File))
- to change the location of the projects pom file. However, this has the additional side effect of changing the ${basedir} of your maven modules to be the directory containing the
- pom file. For me, this was causing an issue with adding new test sources (via the build-helper plugin) as I was using relative paths to the additional test source directories
- and the build helper plugin was resolving these paths against ${basedir} which had now changed location. What made this extra hard to track down was the fact that the basedir
-  was only changed _after_ the flatten plugin had run.
+This should come at a huge warning though (see this [github issue](https://github.com/mojohaus/flatten-maven-plugin/issues/50) I created for a summary). Upon making this
+change it was noticed that my integration tests were no longer run during the maven build.
+
+After a lot of debugging and reading through the flatten plugin source code, I uncovered the cause of this issue. The flatten plugin uses [this method](http://maven.apache.org/ref/3.1.1/apidocs/org/apache/maven/project/MavenProject.html#setFile(java.io.File))
+to change the location of the projects pom file. However, this has the additional side effect of changing the **${basedir}** of your maven modules to be
+the directory containing the pom file. For me, this was causing an issue with adding new test sources (via the [Build Helper Maven Plugin](http://www.mojohaus.org/build-helper-maven-plugin/))
+as I was using relative paths to the additional test source directories and the build helper plugin was resolving these paths against **${basedir}** which had
+now changed location. What made this extra hard to track down was the fact that the basedir was only changed *after* the flatten plugin had run.
 
 So one solution to this is really to just live with the default output location for the generated pom (which you'll probably want to add to your scm ignore list) as there are too many
-risks associated with your basedir changing at some point during your build. However, in the end I decided to write my own plugin, the parent resolve plugin (TODO: link)
-that makes use of a new api method in maven 3.2.5 that allows you to override the pom file location without altering your basedir
-(see [MavenProject#setPomFile(java.io.File)](http://maven.apache.org/ref/3.2.5/apidocs/org/apache/maven/project/MavenProject.html#setPomFile(java.io.File)))
+risks associated with your basedir changing at some point during your build. However, in the end I decided to write my own plugin, the
+[Resolve Parent Version Plugin](https://github.com/hbakkum/resolve-parent-version-maven-plugin).
+
+The plugin makes use of a new api method in maven **3.2.5** that allows you to override the pom file location without altering your basedir
+(see [MavenProject#setPomFile(java.io.File)](http://maven.apache.org/ref/3.2.5/apidocs/org/apache/maven/project/MavenProject.html#setPomFile(java.io.File))).
 This allows the plugin to, by default, generate the pom file in the /target directory which is likely already scm ignored and automatically cleaned but does have the restriction
-of requiring at least maven 3.2.5. I've also restricted this plugin to modify the pom file in a very specific way, that is, all it will do is simply resolve the version of the parent
+of requiring at least maven **3.2.5**. I've also restricted this plugin to modify the pom file in a very specific way, that is, all it will do is simply resolve the version of the parent
 module to ensure there are no property placeholders present. This targets only the issue discussed and leaves the rest of the pom unmodified as I did not require any of the other
 changes being made by the flatten plugin.
 
