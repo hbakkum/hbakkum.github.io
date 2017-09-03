@@ -10,27 +10,32 @@ author: Hayden Bakkum
 In this post I'll discuss some recent experience I've had setting up a continuous delivery pipeline using Maven and Jenkins.
 In particular, I'll focus on some of the challenges encountered with using a dynamic maven version throughout a projects pom hierarchy.
 
-One of the features of a continuous delivery pipeline is that each commit to source control is a potential production deployment. Typically this works
-by a commit to source control triggering a build of your software (e.g. via a CI server) which produces one or more deployable packages; these packages are considered
-to be release candidates which the pipeline then carries through a series of validating steps that attempt to reject the packages as being suitable for deployment
- to production. The final phase of the pipeline, should the packages pass successfully through all prior steps, is deployment to production (that's not to say the entire
- process completes without any manual intervention, there may be, for example, manual testing or approval steps within the pipeline).
+One of the features of a continuous delivery pipeline is that each commit to source control is a potential production deployment. The first step in the pipeline is
+typically a software build that is triggered upon commit to source control (e.g. via a CI server) and this produces one or more deployable packages.
+These packages are considered to be release candidates which the pipeline then carries through a series of validating steps that attempt to reject the
+packages as being suitable for deployment to production. The final phase of the pipeline, should the packages pass successfully through all prior steps,
+is deployment to production (that's not to say the entire process completes without any manual intervention, there may be, for example, manual testing or
+approval steps within the pipeline).
 
-When using maven as the build tool in a deployment pipeline, I'd like the following behaviour:
+When using Maven as the build tool in a continuous delivery pipeline, I'd like to have the following behaviour:
 
  - Every build is a potential release, so I want to use a maven release version (i.e. not a snapshot version) for each build, and
  - Each build gets a release version assigned that has been incremented from the previous builds release version
 
-I'd first like to rule out the maven release plugin as satisfying these requirements. Although we could trigger the maven release plugin upon commit to auto increment a projects version,
-the plugin will commit the version changes in the pom files back to source control, which will in turn trigger another build and so we get caught in an infinite loop of build, increment version, commit.
+I'd first like to rule out the [maven release plugin](http://maven.apache.org/maven-release/maven-release-plugin/) as satisfying these requirements.
+Although we could trigger the maven release plugin to auto increment a projects version during the build, the plugin will commit the version changes
+in the pom files back to source control, which will then trigger the build again, resulting in a infinite loop of builds.
 
-An alternative approach I have tried using is to use a property placeholder in the projects parent pom version field which would be used to inject a build number
-from a CI server (in this case Jenkins). This approach can be used to produce an incrementing release version for every commit to the repository without the need to modify
-the pom and commit this back into source control. For builds that occur outside of Jenkins (e.g. on a developers local machine) we can simply replace the build number with the string "local".
+An alternative approach, is to use a property placeholder in the projects parent pom version field which would be used to inject a
+build number from a CI server (in my case Jenkins). This approach can be used to produce an incrementing release version for every commit to the
+repository without the need to modify the pom and commit this back into source control. For builds that occur outside of Jenkins
+(e.g. on a developers local machine) we can simply replace the build number with the string "**local**".
 
-The following parent pom demonstrates how this was done:
+The following parent pom demonstrates how this can be done:
 
 {% highlight xml %}
+<project>
+
     <groupId>com.hbakkum</groupId>
     <artifactId>app-parent</artifactId>
     <version>1.${build.number}</version>
@@ -63,17 +68,19 @@ The following parent pom demonstrates how this was done:
     </modules>
 
     ...
+
+</project>
 {% endhighlight %}
 
 In summary:
-- as mentioned, by default (i.e. when not running the build from jenkins) the build number will be set to "local"
-- a profile gets activated (via the presence of a environment variable provided by jenkins: BUILD_NUMBER) when the build was triggered by jenkins. This
+- as mentioned, by default (i.e. when not running the build from jenkins) the build number will be set to "**local**"
+- a profile gets activated (via the presence of a environment variable provided by jenkins: **BUILD_NUMBER**) when the build was triggered by jenkins. This
 build number gets injected into the projects parent pom version field
 - the parent pom version gets inherited by all child modules of the project
 - changing the projects major version (in the example it is "1") is a human decision and can be done by simply updating the parent pom and committing the change.
 
-Some readers may recognise that maven explicitly warns against using properties in a poms version field and indeed when we run a maven build we get the
-following warnings:
+Some readers may recognise that maven explicitly warns against using properties in a poms version field and indeed when a maven build is run the following
+warnings appear:
 
 {% highlight console %}
 [WARNING]
@@ -94,23 +101,24 @@ A number of years ago [MNG-5576](https://issues.apache.org/jira/browse/MNG-5576)
 This issue loosened this restriction by not warning against the use of a few specific properties in the version field.
 
 The allowed properties are:
-- ${revision}
-- ${sha1}
-- ${changelist}
+- **${revision}**
+- **${sha1}**
+- **${changelist}**
 
-However, one property I feel is missing from this list is ${build.number} as I fail to see the difference between allowing an
-incrementing sequence supplied by subversion versus an incrementing sequence supplied via Jenkins in a poms version.
-And although we are using git, I certainly don't want to see a sha1 in my version string!
-So I choose to ignore this warning and go with our build number property (and anyway we _could_ have just shoe-horned the build number into the
-revision property to rid ourselves of this message too).
+However, one property I feel is missing from this list is **${build.number}** as I fail to see the difference between allowing an
+incrementing sequence supplied by subversion versus an incrementing sequence supplied via Jenkin.
+And although I am using git, I certainly don't want to see a sha1 in my version string!
+So I choose to simply ignore this warning (and anyway, if I really wanted to,
+I _could_ have just shoe-horned the build number into the revision property to prevent the warnings).
 
 However, another much more serious problem looms whether you use revision, sha1, changelist or a "disallowed" property in the poms version.
-This occurs when a project is multi moduled with child modules which reference the parent pom using a property placeholder in the version.
+This occurs when a project is multi moduled with child modules that reference the parent pom using a property placeholder in the version.
 
 As an example, suppose we had the following parent pom:
 
-Parent POM:
 {% highlight xml %}
+<project>
+
     <groupId>com.hbakkum</groupId>
     <artifactId>app-parent</artifactId>
     <version>1.${build.number}</version>
@@ -122,10 +130,14 @@ Parent POM:
     </modules>
 
     ...
+
+</project>
 {% endhighlight %}
 
 And these two child modules, with a dependency from app-spec-tests to app-core:
 {% highlight xml %}
+<project>
+
   <parent>
       <groupId>com.hbakkum</groupId>
       <artifactId>app-parent</artifactId>
@@ -133,9 +145,15 @@ And these two child modules, with a dependency from app-spec-tests to app-core:
   </parent>
 
   <artifactId>app-core</artifactId>
+
+  ...
+
+</project>
 {% endhighlight %}
 
 {% highlight xml %}
+<project>
+
     <parent>
         <groupId>com.hbakkum</groupId>
         <artifactId>app-parent</artifactId>
@@ -150,18 +168,18 @@ And these two child modules, with a dependency from app-spec-tests to app-core:
             <artifactId>app-core</artifactId>
             <version>${projection.version}</version>
         </dependency>
-
-        ...
     </dependencies>
 
     ...
+
+</project>
 {% endhighlight %}
 
-Things work fine if we say run a 'mvn clean install' from the parent pom level.
+Things work fine if we say run a '**mvn clean install**' from the parent pom level.
 However, if we wanted to just build from the app-spec-tests module only, the build fails with the following message:
 
 {% highlight console %}
-[INFO] Building Microservice Spec Tests 1.local
+[INFO] Building App Spec Tests 1.local
 [INFO] ------------------------------------------------------------------------
 Downloading: https://repo.maven.apache.org/maven2/com/hbakkum/app-parent/1.$%7Bbuilder.number%7D/app-parent-1.$%7builder.number%7D.pom
 [INFO] ------------------------------------------------------------------------

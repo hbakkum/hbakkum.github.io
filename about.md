@@ -4,4 +4,4 @@ title: About
 permalink: /about/
 ---
 
-**Thinkspace** is just another minimalist Jekyll theme that focuses on technical writing. Designed for engineers to write their ranting and findings.
+Introduce yourself here... so people will know who you are and what you do.. blah..blah..blah..
