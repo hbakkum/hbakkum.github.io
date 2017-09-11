@@ -22,8 +22,8 @@ When using Maven as the build tool in a continuous delivery pipeline, I'd like t
  - Every build is a potential release, so I want to use a maven release version (i.e. not a snapshot version) for each build, and
  - Each build gets a release version assigned that has been incremented from the previous builds release version
 
-I'd first like to rule out the [maven release plugin](http://maven.apache.org/maven-release/maven-release-plugin/) as satisfying these requirements.
-Although we could trigger the maven release plugin to auto increment a projects version during the build, the plugin will commit the version changes
+I'd first like to rule out the [Maven Release Plugin](http://maven.apache.org/maven-release/maven-release-plugin/) as satisfying these requirements.
+Although we could trigger the maven release plugin to auto increment a projects version during the build, the plugin then needs to commit the version changes
 in the pom files back to source control, which will then trigger the build again, resulting in a infinite loop of builds.
 
 An alternative approach, is to use a property placeholder in the projects parent pom version field which would be used to inject a
@@ -106,7 +106,7 @@ The allowed properties are:
 - **${changelist}**
 
 However, one property I feel is missing from this list is **${build.number}** as I fail to see the difference between allowing an
-incrementing sequence supplied by subversion versus an incrementing sequence supplied via Jenkin.
+incrementing sequence supplied by subversion versus an incrementing sequence supplied via Jenkins.
 And although I am using git, I certainly don't want to see a sha1 in my version string!
 So I choose to simply ignore this warning (and anyway, if I really wanted to,
 I _could_ have just shoe-horned the build number into the revision property to prevent the warnings).
@@ -166,7 +166,7 @@ And these two child modules, with a dependency from app-spec-tests to app-core:
         <dependency>
             <groupId>com.hbakkum</groupId>
             <artifactId>app-core</artifactId>
-            <version>${projection.version}</version>
+            <version>${project.version}</version>
         </dependency>
     </dependencies>
 
@@ -176,7 +176,8 @@ And these two child modules, with a dependency from app-spec-tests to app-core:
 {% endhighlight %}
 
 Things work fine if we say run a '**mvn clean install**' from the parent pom level.
-However, if we wanted to just build from the app-spec-tests module only, the build fails with the following message:
+However, if we wanted to build the app-spec-tests module only (e.g. by changing into the app-spec-tests module directory and running a 'mvn clean install'),
+the build fails with the following message:
 
 {% highlight console %}
 [INFO] Building App Spec Tests 1.local
@@ -202,41 +203,114 @@ a path with the resolved version for the pom, rather it uses the unresolved prop
 The parent pom never gets installed (rightly so) under this path and thus the dependency resolution fails. This will also occur when building an external maven project that depends on any of these
 modules too.
 
-### The Maven Flatten Plugin
 Fortunately, there is a maven plugin that can resolve this issue. It was a little difficult to find, but after reading the discussions
- on [MNG-5576](https://issues.apache.org/jira/browse/MNG-5576) I found the [Maven Flatten Plugin](http://www.mojohaus.org/flatten-maven-plugin/).
+ on [MNG-5576](https://issues.apache.org/jira/browse/MNG-5576) I stumbled across the [Maven Flatten Plugin](http://www.mojohaus.org/flatten-maven-plugin/).
 
 The Maven Flatten Plugin can be used to generate an alternative version of your projects pom file that maven will then use to install and deploy.
-Some of the features of this generated pom include merging in the parent pom information (and then removing the parent pom reference) and resolving all
-property placeholders, thus addressing the issue described above.
+Some of the features of this generated pom include merging in the parent pom information (and then removing the parent pom reference) and **resolving all
+property placeholders before installing the pom file**, thus addressing the issue described above.
 
-This plugin does solve the problem, but there is an issue you need to look out for (and one that became a bit of a time sink to debug).
+This plugin does solve the problem, but can introduce another issue you need to look out for (and one that became a bit of a time sink to debug).
 You'll notice that the plugin writes the generated pom file into the modules root directory (as opposed to the target directory) and the plugin has an explicit goal to clean this file up as part of the
 maven clean phase.
 
-I found this a tad annoying and questioned why the default location is not within the modules target directory.
-There is plugin configuration to control the output directory of the generated pom though, so I was tempted to change this to be inside the target directory.
-This should come at a huge warning though (see this [github issue](https://github.com/mojohaus/flatten-maven-plugin/issues/50) I created for a summary). Upon making this
-change it was noticed that my integration tests were no longer run during the maven build.
+{% highlight xml %}
+<project>
 
-After a lot of debugging and reading through the flatten plugin source code, I uncovered the cause of this issue. The flatten plugin uses [this method](http://maven.apache.org/ref/3.1.1/apidocs/org/apache/maven/project/MavenProject.html#setFile(java.io.File))
-to change the location of the projects pom file. However, this has the additional side effect of changing the **${basedir}** of your maven modules to be
-the directory containing the pom file. For me, this was causing an issue with adding new test sources (via the [Build Helper Maven Plugin](http://www.mojohaus.org/build-helper-maven-plugin/))
+    <plugins>
+
+        <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>flatten-maven-plugin</artifactId>
+            <version>1.0.0</version>
+            <configuration>
+                <!-- Allows you to output the flattened pom to the target directory, but watch out... -->
+                <!-- <outputDirectory>${project.basedir}/target</outputDirectory> -->
+            </configuration>
+            <executions>
+                <!-- enable flattening -->
+                <execution>
+                    <id>flatten</id>
+                    <phase>process-resources</phase>
+                    <goals>
+                        <goal>flatten</goal>
+                    </goals>
+                </execution>
+                <!-- ensure proper cleanup -->
+                <execution>
+                    <id>flatten.clean</id>
+                    <phase>clean</phase>
+                    <goals>
+                        <goal>clean</goal>
+                    </goals>
+                </execution>
+            </executions>
+        </plugin>
+
+    ...
+
+    </plugins>
+
+</project>
+{% endhighlight %}
+
+![Maven Flatten Plugin Screenshot]({{ site.url }}/assets/images/flatten-plugin-screenshot.png)
+
+I found this a tad annoying and wondered why the default output location for the flattened pom was not within the modules target directory (where it would
+be automatically cleaned via 'mvn clean' and usually I have already ignored the target directory from source control).
+There is plugin configuration to control the output directory of the generated pom though, so I was tempted to change this to be inside the target directory.
+**This should with a huge warning though!!** (see this [github issue](https://github.com/mojohaus/flatten-maven-plugin/issues/50) I created for a summary). Upon making this
+change I noticed that my integration tests were no longer executed during a maven build.
+
+After much debugging and reading through the flatten plugins source code, I discovered the cause of this issue.
+The flatten plugin uses [this method](http://maven.apache.org/ref/3.1.1/apidocs/org/apache/maven/project/MavenProject.html#setFile(java.io.File))
+to change the path to the projects pom file (in the flatten plugins case it gets changed to the path of the flattened pom file).
+**However, this has the additional side effect of changing the ${basedir} of your maven module to be the directory containing the pom file**. And thus by moving the flattened
+ pom file into the target directory, you are inadvertently changing the modules **${basedir}** to the target directory too.
+
+For my specific case, this was causing an issue with adding new test sources (via the [Build Helper Maven Plugin](http://www.mojohaus.org/build-helper-maven-plugin/))
 as I was using relative paths to the additional test source directories and the build helper plugin was resolving these paths against **${basedir}** which had
-now changed location. What made this extra hard to track down was the fact that the basedir was only changed *after* the flatten plugin had run.
+now changed to be the target directory. What made this extra hard to track down was the fact that the basedir was only changed *after* the flatten plugin had executed, so any
+plugins run before the flatten plugin had the correct basedir, while any plugins run afterwards got the updated (i.e. incorrect) basedir.
 
 So one solution to this is really to just live with the default output location for the generated pom (which you'll probably want to add to your scm ignore list) as there are too many
 risks associated with your basedir changing at some point during your build. However, in the end I decided to write my own plugin, the
 [Resolve Parent Version Plugin](https://github.com/hbakkum/resolve-parent-version-maven-plugin).
 
-The plugin makes use of a new api method in maven **3.2.5** that allows you to override the pom file location without altering your basedir
-(see [MavenProject#setPomFile(java.io.File)](http://maven.apache.org/ref/3.2.5/apidocs/org/apache/maven/project/MavenProject.html#setPomFile(java.io.File))).
-This allows the plugin to, by default, generate the pom file in the /target directory which is likely already scm ignored and automatically cleaned but does have the restriction
-of requiring at least maven **3.2.5**. I've also restricted this plugin to modify the pom file in a very specific way, that is, all it will do is simply resolve the version of the parent
-module to ensure there are no property placeholders present. This targets only the issue discussed and leaves the rest of the pom unmodified as I did not require any of the other
-changes being made by the flatten plugin.
+The plugin makes use of a new api method in maven **3.2.5** (meaning the plugin does come but does have the restriction of requiring at least maven **3.2.5**) that allows you to
+override the pom file location without altering your basedir (see [MavenProject#setPomFile(java.io.File)](http://maven.apache.org/ref/3.2.5/apidocs/org/apache/maven/project/MavenProject.html#setPomFile(java.io.File))).
+This allows the plugin to, by default, generate the pom file in the /target directory which is likely already scm ignored and automatically cleaned during a 'mvn clean'.
 
+Another reason for writing this plugin was that I was not completely comfortable with all the changes that the flatten plugin was making to my installed pom. All I
+really required to address the issue was to ensure that my projects pom files get installed with all property placeholders in the parent version string resolved. So the only
+change this plugin makes to the installed pom is to resolve any property placeholders in the parent version string.
 
+An example of the plugins usage (see the [Resolve Parent Version Plugin](https://github.com/hbakkum/resolve-parent-version-maven-plugin) for more details):
+
+{% highlight xml %}
+<project>
+
+    <plugins>
+
+        <plugin>
+          <groupId>com.hbakkum.maven.plugins</groupId>
+          <artifactId>resolve-parent-version-maven-plugin</artifactId>
+          <version>0.6</version>
+          <executions>
+            <execution>
+              <goals>
+                <goal>resolve-parent-version</goal>
+              </goals>
+            </execution>
+          </executions>
+        </plugin>
+
+    ...
+
+    </plugins>
+
+</project>
+{% endhighlight %}
 
 
 
