@@ -8,7 +8,7 @@ url: http://blog.kiwitype.com # site url
 baseurl: "" # apply repo name if use it under gh-pages branch
 # baseurl: null # apply null if repo name is something like username.github.io
 
-google_analytics: UA-XXXXX-XX
+google_analytics: UA-85520826-3
 repo: https://github.com/hbakkum/hbakkum.github.io
 disqus_shortname: "kiwitype"
 twitter_username:
