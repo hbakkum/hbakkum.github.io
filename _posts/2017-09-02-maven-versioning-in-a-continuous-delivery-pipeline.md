@@ -5,6 +5,7 @@ comments: true
 description: ""
 keywords: "Continuous Delivery Jenkins Maven"
 author: Hayden Bakkum
+visible: 1
 ---
 
 In this post I'll discuss some recent experience I've had setting up a continuous delivery pipeline using Maven and Jenkins.
