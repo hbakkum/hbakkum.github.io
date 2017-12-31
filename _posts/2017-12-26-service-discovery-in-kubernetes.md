@@ -10,3 +10,4 @@ visible: 0
 // virtual ip 
 // DNS discovery (headless service)
 // REST API discovery
+// istio

@@ -1,0 +1,246 @@
+---
+layout: post
+title: "Creating a Basic Dropwizard Microservice in Kubernetes"
+comments: true
+description: ""
+keywords: "kubernetes dropwizard microservices"
+author: Hayden Bakkum
+visible: 0
+---
+
+In this post I'll describe how to create a basic dropwizard based microservice and deploy this into a kubernetes cluster. For the purposes
+of this demo, I'll be using [Google's Kubernetes Engine](https://cloud.google.com/kubernetes-engine/) as the kubernetes cluster provider.
+
+In order to get a dropwizard service deployed to kuberenetes, a few basic building blocks are required:
+* a docker image that starts a dropwizard service
+* a kubernetes configuration file that references said image and describes how it should be deployed to the cluster (see [kubernetes deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/))
+* a build pipeline to trigger the image build and then manage the deployment to kubernetes  
+
+The service used as an example will expose a REST endpoint for returning a list of movies and will be aptly named the **movies-service**. 
+Full source code for this service can be found here (TODO: link).
+
+The project layout of the service can be seen in the image below, with a brief description against the various files which we'll now
+explore in more detail.
+![Movies Service Project Layout]({{ site.url }}/assets/images/movies-service-project-layout.png)
+
+### Building a Dropwizard Docker Image ###
+
+To begin with, we'll look at the services pom file in more detail. As previously mentioned, one of the core building blocks required to get a dropwizard service
+running in kubernetes, is a docker image that starts a dropwizard service. The pom file thus includes the configuration required to first build a jar containing
+the dropwizard service and then build a docker image that includes this jar (and its dependencies).
+
+Building the dropwizard jar is pretty simple and the following pom snippet shows how this is done:
+{% highlight xml %}
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-jar-plugin</artifactId>
+    <version>3.0.2</version>
+    <configuration>
+        <archive>
+            <manifest>
+                <addClasspath>true</addClasspath>
+                <classpathPrefix>lib/</classpathPrefix>
+                <mainClass>com.kiwitype.blog.k8s.services.movies.MoviesService</mainClass>
+                <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+        </archive>
+    </configuration>
+</plugin>
+{% endhighlight %} 
+
+One difference between the [recommended way of building a dropwizard jar](http://www.dropwizard.io/1.2.2/docs/getting-started.html#building-fat-jars) 
+is that we do not build a fat jar. In the dropwizard documentation, the argument made for building a fat jar is that it is easier to promote a single artifact
+between environments. This is true (and a great practise as opposed to say rebuilding for different environments), 
+however in our case we will not be promoting jars between environments but rather docker images, so we can easily include all dependencies outside of the jar 
+but within a single image. A benefit of this is that we can make the build more efficient by avoiding the overhead of executing the [Shade Plugin](https://maven.apache.org/plugins/maven-shade-plugin/), 
+as well as taking full advantage of docker layer caching by including all dependencies in their own layer. Doing this ensures that the final 
+image layer (the layer that includes the dropwizard jar) is as small as possible. 
+
+You should also be able to see that we have added a classpath entry to the dropwizard jar that we will use as the location for its dependencies. Looking
+further ahead in the pom the maven dependency plugin is used to copy these dependencies into the target directory so they can then be copied into the
+docker image:
+{% highlight xml %}
+<plugin>
+    <artifactId>maven-dependency-plugin</artifactId>
+    <executions>
+        <execution>
+            <phase>initialize</phase>
+            <goals>
+                <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+                <overWriteReleases>false</overWriteReleases>
+                <includeScope>runtime</includeScope>
+                <outputDirectory>${project.build.directory}/lib</outputDirectory>
+            </configuration>
+        </execution>
+    </executions>
+</plugin>
+
+</project>
+{% endhighlight %} 
+
+Finally we build the docker image. To do this the [Spotify Dockerfile Maven Plugin](https://github.com/spotify/dockerfile-maven) is used. By default, this plugin looks for 
+a Dockerfile in the projects root directory and uses this to run a docker build. 
+{% highlight xml %}
+<plugin>
+    <groupId>com.spotify</groupId>
+    <artifactId>dockerfile-maven-plugin</artifactId>
+    <version>1.3.6</version>
+    <executions>
+        <execution>
+            <id>default</id>
+            <goals>
+                <goal>build</goal>
+                <goal>push</goal>
+            </goals>
+        </execution>
+    </executions>
+    <configuration>
+        <repository>us.gcr.io/${gcloud.project}/${project.artifactId}</repository>
+        <tag>${project.version}</tag>
+        <buildArgs>
+            <JAR_FILE>${project.build.finalName}.jar</JAR_FILE>
+        </buildArgs>
+    </configuration>
+</plugin>
+{% endhighlight %}
+
+The goals **build** and **push** are declared and these bind to the maven **package** and **deploy** phases respectively. Thus a **mvn clean package** can be used to produce
+the docker image and a **mvn clean deploy** will produce the image as well as push it to a docker registry. For this example, the docker registry being
+used is [Google's Container Registry](https://cloud.google.com/container-registry/). 
+
+As mentioned, the plugin will look for a **Dockerfile** in the same directory as the pom file and the contents of this Dockerfile are as follows:
+{% highlight docker %}
+FROM openjdk:8-jre
+
+# declare that the container listens on these ports
+EXPOSE 8080
+EXPOSE 8081
+
+# standard command for starting a dropwizard service
+ENTRYPOINT ["/usr/bin/java", "-jar", "/usr/share/movies-service/movies-service.jar", "server", "/usr/share/movies-service/config.yml"]
+
+# add in project dependencies
+ADD target/lib /usr/share/movies-service/lib
+
+# add dropwizard config file - the server is configured to listen on ports 8080 (application port) and 8081 (admin port)
+ADD target/config/dw-config.yml /usr/share/movies-service/config.yml
+
+# add built dropwizard jar file - the JAR_FILE argument is configured in the dockerfile maven plugin 
+ARG JAR_FILE
+ADD target/${JAR_FILE} /usr/share/movies-service/movies-service.jar
+{% endhighlight %}
+
+Thus running a **mvn clean deploy** will build our dropwizard image and push it to container registry, ready for deployment to kubernetes.
+
+And one final note on the build - the maven deploy plugin has been configured to skip deployment of the dropwizard jar to a maven repository as
+really the build artifact is the docker image which has already been pushed to the container registry.
+
+### Creating Kubernetes Configuration ###
+The next thing we need to do is produce the kubernetes configuration file. To do this we create a yaml file which contains the kubernetes resources we wish
+to create, in this case, a kubernetes *deployment* and *service*. 
+
+Our docker image will be contained within a *pod*, which is a group of one or more containers running as a single deployable unit within kubernetes. 
+The deployment defines the state in which these pods should be deployed across the cluster. For example, the deployment declares how many pods should be run, 
+what containers should be running within each pod, their update strategy, etc. For more information, see kubernetes 
+[pods](https://kubernetes.io/docs/concepts/workloads/pods/pod/) and [deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/). 
+
+A kubernetes service is a construct that can be used to select a set of pods so that they may be accessed as a single logical unit. For example,
+we can configure the service to select our movies service pods. The service can then be configured to assign this set of pods a virtual IP (VIP). The pods
+can then be accessed over this VIP and kubernetes will perform some rudimentary load balancing across the pods as well as ensuring pods are added/removed from 
+the VIP if they become available/unavailable.
+
+The yaml file containing these resources is located in **src/main/config/k8s-config.yml**:
+{% highlight yaml %}
+kind: Service # kubernetes service definition
+apiVersion: v1
+metadata:
+  name: movies-service
+spec:
+  ports:
+  - name: http
+    port: 80
+    targetPort: http-app
+    protocol: TCP
+  selector: # this service selects all pods with the label, app=movies-service
+    app: movies-service
+---
+kind: Deployment # kubernetes deployment definition
+apiVersion: extensions/v1beta1
+metadata:
+  name: movies-service
+spec:
+  replicas: 2 # the number of pods we wish to run
+  revisionHistoryLimit: 5
+  strategy:
+      rollingUpdate: # controls update strategy
+        maxSurge: 1
+        maxUnavailable: 1
+      type: RollingUpdate
+  template:
+    metadata:
+      name: movies-service
+      labels:
+        app: movies-service # this label is used to select the movies-service pods in the service definition above
+    spec:
+      containers: # list of containers to run within the pod. We'll run just a single container, i.e. our dropwizard based movies service
+      - name: movies-service
+        image: us.gcr.io/${gcloud.project}/movies-service:${project.version} # the image name of the movies service. The property placeholders get resolved at build time
+        imagePullPolicy: IfNotPresent
+        readinessProbe: # these probes are used to indicate whether or not the pod is ready to receive traffic
+          httpGet: # make an http GET to the dropwizard healthcheck endpoint, if we get a 2xx back (i.e. all checks passed), then this pod will receive traffic
+            path: /healthcheck
+            port: 8081
+        ports: # the ports that we want exposed on the IP assigned to the pod
+        - name: http-app # the dropwizard application port
+          containerPort: 8080
+        - name: http-admin # the dropwizard admin port
+          containerPort: 8081
+{% endhighlight %}  
+
+It should also be highlighted that this file is in fact a template that is passed through maven resource filtering so that 
+it gets merged with maven build properties. The resulting file is output to **target/config/k8s-config.yml** and this is what
+will actually get used in the build pipeline to deploy our movies-service to kubernetes.
+
+### Deploying the Dropwizard Service to Kubernetes ###
+And finally we need to define a build pipeline for coordinating the build and deployment to kubernetes. For this, 
+I'll be using Jenkins. The following Jenkinsfile:
+{% highlight groovy %}
+/*
+ This needs to run on a jenkins slave with gcloud installed 
+*/
+node('gcloud-slave') {
+    // delete old workspace
+    stage('clean') {
+        deleteDir()
+    }
+
+    // build the dropwizard docker image and upload this to container engine
+    stage('build') {
+        withEnv(["GOOGLE_APPLICATION_CREDENTIALS=/var/jenkins/gcloud-accounts/${env.GCLOUD_PROJECT}-jenkins-slave-account.json"]) {
+            mvn 'clean deploy'
+        }
+    }
+
+    stage('deploy to k8s') {
+        withEnv(["GOOGLE_APPLICATION_CREDENTIALS=/var/jenkins/gcloud-accounts/${env.GCLOUD_PROJECT}-jenkins-slave-account.json"]) {
+            sh "gcloud --project ${env.GCLOUD_PROJECT} container clusters get-credentials ${env.K8S_CLUSTER} --zone us-central1-a"
+            sh "kubectl apply -f target/config/k8s-config.yml"
+            sh "kubectl rollout status deployment/movies-service"
+        }
+    }
+}
+{% endhighlight %}
+
+
+The build pipeline
+- Build a docker image containing the dropwizard jar                           
+- Upload image to docker registry (in this case google container registry)
+- Deploy
+
+// mention about image promotion
+
+// health checks
+
+// making request to service
