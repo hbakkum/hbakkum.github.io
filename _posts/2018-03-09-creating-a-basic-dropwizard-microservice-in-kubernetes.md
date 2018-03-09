@@ -5,7 +5,7 @@ comments: true
 description: ""
 keywords: "kubernetes dropwizard microservices"
 author: Hayden Bakkum
-visible: 0
+visible: 1
 ---
 
 In this post I'll describe how to create a basic dropwizard based microservice and deploy this into a kubernetes cluster. For the purposes
@@ -17,11 +17,6 @@ In order to get a dropwizard service deployed to kuberenetes, a few basic buildi
 * a build pipeline to trigger the image build and then manage the deployment to kubernetes  
 
 The service used as an example will expose a REST endpoint for returning a list of movies and will be aptly named the **movies-service**. 
-Full source code for this service can be found here (TODO: link).
-
-The project layout of the service can be seen in the image below, with a brief description against the various files which we'll now
-explore in more detail.
-![Movies Service Project Layout]({{ site.url }}/assets/images/movies-service-project-layout.png)
 
 ### Building a Dropwizard Docker Image ###
 
@@ -119,13 +114,13 @@ EXPOSE 8080
 EXPOSE 8081
 
 # standard command for starting a dropwizard service
-ENTRYPOINT ["/usr/bin/java", "-jar", "/usr/share/movies-service/movies-service.jar", "server", "/usr/share/movies-service/config.yml"]
+ENTRYPOINT ["/usr/bin/java", "-jar", "/usr/share/movies-service/movies-service.jar", "server", "/usr/share/movies-service/config.yaml"]
 
 # add in project dependencies
 ADD target/lib /usr/share/movies-service/lib
 
 # add dropwizard config file - the server is configured to listen on ports 8080 (application port) and 8081 (admin port)
-ADD target/config/dw-config.yml /usr/share/movies-service/config.yml
+ADD target/config/dw-config.yaml /usr/share/movies-service/config.yaml
 
 # add built dropwizard jar file - the JAR_FILE argument is configured in the dockerfile maven plugin 
 ARG JAR_FILE
@@ -135,7 +130,7 @@ ADD target/${JAR_FILE} /usr/share/movies-service/movies-service.jar
 Thus running a **mvn clean deploy** will build our dropwizard image and push it to container registry, ready for deployment to kubernetes.
 
 And one final note on the build - the maven deploy plugin has been configured to skip deployment of the dropwizard jar to a maven repository as
-really the build artifact is the docker image which has already been pushed to the container registry.
+my final build artifact is the docker image which has already been pushed to the container registry.
 
 ### Creating Kubernetes Configuration ###
 The next thing we need to do is produce the kubernetes configuration file. To do this we create a yaml file which contains the kubernetes resources we wish
@@ -146,12 +141,12 @@ The deployment defines the state in which these pods should be deployed across t
 what containers should be running within each pod, their update strategy, etc. For more information, see kubernetes 
 [pods](https://kubernetes.io/docs/concepts/workloads/pods/pod/) and [deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/). 
 
-A kubernetes service is a construct that can be used to select a set of pods so that they may be accessed as a single logical unit. For example,
-we can configure the service to select our movies service pods. The service can then be configured to assign this set of pods a virtual IP (VIP). The pods
-can then be accessed over this VIP and kubernetes will perform some rudimentary load balancing across the pods as well as ensuring pods are added/removed from 
-the VIP if they become available/unavailable.
+A kubernetes [service](https://kubernetes.io/docs/concepts/services-networking/service/) is a construct that can be used to select a set of pods so that they may be accessed as a single logical unit. For example,
+we can configure the service to select our movies service pods. By default, the kubernetes service will assign this set of pods a virtual IP (VIP) (this VIP
+is also only resolvable from within the cluster). The pods can then be accessed over this VIP and kubernetes will perform some rudimentary load balancing 
+across the pods as well as ensuring pods are added/removed from the VIP if they become available/unavailable.
 
-The yaml file containing these resources is located in **src/main/config/k8s-config.yml**:
+The yaml file containing these resources is located in **src/main/config/k8s-config.yaml**:
 {% highlight yaml %}
 kind: Service # kubernetes service definition
 apiVersion: v1
@@ -200,47 +195,125 @@ spec:
 {% endhighlight %}  
 
 It should also be highlighted that this file is in fact a template that is passed through maven resource filtering so that 
-it gets merged with maven build properties. The resulting file is output to **target/config/k8s-config.yml** and this is what
+it gets merged with maven build properties. The resulting file is output to **target/config/k8s-config.yaml** and this is what
 will actually get used in the build pipeline to deploy our movies-service to kubernetes.
 
 ### Deploying the Dropwizard Service to Kubernetes ###
 And finally we need to define a build pipeline for coordinating the build and deployment to kubernetes. For this, 
-I'll be using Jenkins. The following Jenkinsfile:
+I'll be using Jenkins. The following Jenkinsfile defines the pipeline for build and deployment of the movies-service:
 {% highlight groovy %}
-/*
- This needs to run on a jenkins slave with gcloud installed 
-*/
-node('gcloud-slave') {
-    // delete old workspace
-    stage('clean') {
+// This needs to run on a jenkins slave with gcloud installed as well as a key file for a gcloud service account 
+// that has permission to push images to container registry and deploy to kubernetes.
+//  
+//  The variables 'GCLOUD_PROJECT' and 'K8S_CLUSTER' are provided via a parameterized build
+//
+node("gcloud") {
+    stage("clean") {
         deleteDir()
     }
 
-    // build the dropwizard docker image and upload this to container engine
-    stage('build') {
-        withEnv(["GOOGLE_APPLICATION_CREDENTIALS=/var/jenkins/gcloud-accounts/${env.GCLOUD_PROJECT}-jenkins-slave-account.json"]) {
-            mvn 'clean deploy'
+    stage("checkout") {
+        git url: "git@bitbucket.org:hbakkum/movies-service.git"
+    }
+
+    // Build the dropwizard docker image and upload this to container engine. The env variable 
+    // 'DOCKER_GOOGLE_CREDENTIALS' points to the location of our gcloud service account key and 
+    // is used by the spotify dockerfile plugin to authenticate to container registry
+    stage("build") {
+        withEnv(["GCLOUD_PROJECT=${GCLOUD_PROJECT}", "DOCKER_GOOGLE_CREDENTIALS=/var/jenkins/gcloud-accounts/${GCLOUD_PROJECT}-jenkins-slave-account.json"]) {
+            sh "mvn clean deploy"
         }
     }
 
-    stage('deploy to k8s') {
-        withEnv(["GOOGLE_APPLICATION_CREDENTIALS=/var/jenkins/gcloud-accounts/${env.GCLOUD_PROJECT}-jenkins-slave-account.json"]) {
-            sh "gcloud --project ${env.GCLOUD_PROJECT} container clusters get-credentials ${env.K8S_CLUSTER} --zone us-central1-a"
-            sh "kubectl apply -f target/config/k8s-config.yml"
-            sh "kubectl rollout status deployment/movies-service"
-        }
+    stage("deploy") {
+        // Configures kubectl with kubernetes cluster credentials and endpoint information
+        sh "gcloud auth activate-service-account jenkins-slave@${GCLOUD_PROJECT}.iam.gserviceaccount.com --key-file /var/jenkins/gcloud-accounts/${GCLOUD_PROJECT}-jenkins-slave-account.json"
+        sh "gcloud --project ${GCLOUD_PROJECT} container clusters get-credentials ${K8S_CLUSTER} --zone us-central1-a"
+        
+        // Apply the templated kubernetes config file containing the deployment and service, then wait for the rollout to complete
+        sh "kubectl apply -f target/config/k8s-config.yaml"
+        sh "kubectl rollout status deployment/movies-service"
     }
 }
 {% endhighlight %}
 
+After a successful run in jenkins, we see the following output:
 
-The build pipeline
-- Build a docker image containing the dropwizard jar                           
-- Upload image to docker registry (in this case google container registry)
-- Deploy
+{% highlight bash %}
+[INFO] Image bb7e6490d88d: Pushed
+[INFO] 0.17: digest: sha256:699041a8ba20eed14eaf73f8bee737168291471ab24c87a732b4a28b3eded79c size: 2626
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time: 50.881 s
+[INFO] Finished at: 2018-03-09T04:21:36+00:00
+[INFO] Final Memory: 46M/376M
+[INFO] ------------------------------------------------------------------------
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (deploy)
+[Pipeline] sh
+[movies-service-pipeline] Running shell script
++ gcloud auth activate-service-account jenkins-slave@${GCLOUD_PROJECT}.iam.gserviceaccount.com --key-file /var/jenkins/gcloud-accounts/${GCLOUD_PROJECT}-jenkins-slave-account.json
+Activated service account credentials for: [jenkins-slave@${GCLOUD_PROJECT}.iam.gserviceaccount.com]
+[Pipeline] sh
+[movies-service-pipeline] Running shell script
++ gcloud --project ${GCLOUD_PROJECT} container clusters get-credentials ${K8S_CLUSTER} --zone us-central1-a
+Fetching cluster endpoint and auth data.
+kubeconfig entry generated for blog-cluster.
+[Pipeline] sh
+[movies-service-pipeline] Running shell script
++ kubectl apply -f target/config/k8s-config.yaml
+service "movies-service" created
+deployment "movies-service" created
+[Pipeline] sh
+[movies-service-pipeline] Running shell script
++ kubectl rollout status deployment/movies-service
+Waiting for rollout to finish: 0 of 2 updated replicas are available...
+Waiting for rollout to finish: 1 of 2 updated replicas are available...
+deployment "movies-service" successfully rolled out
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+Finished: SUCCESS
+{% endhighlight %}
 
-// mention about image promotion
+To confirm the deployment was successful, we can list out the pods (in this example, I configured the kubernetes deployment
+to contain two pods) the kubernetes cluster:
+{% highlight bash %}
+[user@host] kubectl get pods
+NAME                              READY     STATUS    RESTARTS   AGE
+movies-service-4edf164fcd-ab3ss   1/1       Running   0          29m
+movies-service-4edf164fcd-3455w   1/1       Running   0          29m
+{% endhighlight %}
 
-// health checks
+We can also check that a kubernetes service exists:
+{% highlight bash %}
+[user@host] kubectl get service movies-service
+NAME             TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)   AGE
+movies-service   ClusterIP   10.55.244.103   <none>        80/TCP    32m
+{% endhighlight %} 
+ 
+And finally, from within one of our pods, we can make a curl request to the movies service:
+{% highlight bash %}
+# first, open up a shell on one of our movie pods
+[user@host] kubectl exec -it movies-service-4edf164fcd-ab3ss /bin/bash
 
-// making request to service
+# Now we have a shell on the pod, we can make requests to our dropwizard services via the movies service cluster IP. 
+# These curl requests get load balanced across the two pods 
+[user@pod] curl "http://10.55.244.103/movies"
+[{"id":"1","name":"The Matrix"},{"id":"2","name":"The Terminator"}]
+
+# Kubernetes also registers a DNS entry for our service which resolves to the cluster IP. This gives us a nice
+# service discovery mechanism
+[user@pod] curl "http://movies-service/movies"
+[{"id":"1","name":"The Matrix"},{"id":"2","name":"The Terminator"}]
+{% endhighlight %}
+
+Of course, although accessing the service in this way is fine for service to service communication within a kubernetes cluster,
+at some point we'll want to expose our service outside of the cluster. More on that in an upcoming post...
