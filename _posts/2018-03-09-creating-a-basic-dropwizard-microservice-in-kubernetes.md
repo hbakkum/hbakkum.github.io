@@ -17,6 +17,7 @@ In order to get a dropwizard service deployed to kuberenetes, a few basic buildi
 * a build pipeline to trigger the image build and then manage the deployment to kubernetes  
 
 The service used as an example will expose a REST endpoint for returning a list of movies and will be aptly named the **movies-service**. 
+Full source code for this service can be found [here](https://github.com/hbakkum/movies-service).
 
 ### Building a Dropwizard Docker Image ###
 
