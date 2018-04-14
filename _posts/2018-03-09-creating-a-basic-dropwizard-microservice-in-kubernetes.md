@@ -214,7 +214,7 @@ node("gcloud") {
     }
 
     stage("checkout") {
-        git url: "git@bitbucket.org:hbakkum/movies-service.git"
+        git url: "git@github.com:hbakkum/movies-service.git"
     }
 
     // Build the dropwizard docker image and upload this to container engine. The env variable 
