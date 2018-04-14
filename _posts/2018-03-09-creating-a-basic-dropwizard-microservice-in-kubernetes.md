@@ -138,7 +138,7 @@ The next thing we need to do is produce the kubernetes configuration file. To do
 to create, in this case, a kubernetes *deployment* and *service*. 
 
 Our docker image will be contained within a *pod*, which is a group of one or more containers running as a single deployable unit within kubernetes. 
-The deployment defines the state in which these pods should be deployed across the cluster. For example, the deployment declares how many pods should be run, 
+The deployment defines the manner in which these pods should be deployed across the cluster. For example, the deployment declares how many pods should be run, 
 what containers should be running within each pod, their update strategy, etc. For more information, see kubernetes 
 [pods](https://kubernetes.io/docs/concepts/workloads/pods/pod/) and [deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/). 
 
