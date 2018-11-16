@@ -11,7 +11,7 @@ visible: 1
 In this post I'll describe how to create a basic dropwizard based microservice and deploy this into a kubernetes cluster. For the purposes
 of this demo, I'll be using [Google's Kubernetes Engine](https://cloud.google.com/kubernetes-engine/) as the kubernetes cluster provider.
 
-In order to get a dropwizard service deployed to kuberenetes, a few basic building blocks are required:
+In order to get a dropwizard service deployed to kubernetes, a few basic building blocks are required:
 * a docker image that starts a dropwizard service
 * a kubernetes configuration file that references said image and describes how it should be deployed to the cluster (see [kubernetes deployment](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/))
 * a build pipeline to trigger the image build and then manage the deployment to kubernetes  
