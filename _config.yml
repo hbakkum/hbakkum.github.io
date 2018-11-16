@@ -4,7 +4,7 @@ title: "kiwi"
 title2: "Type" # default: ""
 description: ""
 keywords: ""
-url: http://blog.kiwitype.com # site url
+url: https://blog.kiwitype.com # site url
 baseurl: "" # apply repo name if use it under gh-pages branch
 # baseurl: null # apply null if repo name is something like username.github.io
 

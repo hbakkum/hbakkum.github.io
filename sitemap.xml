@@ -6,17 +6,17 @@
             http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
 
     <url>
-        <loc>http://blog.kiwitype.com/</loc>
+        <loc>https://blog.kiwitype.com/</loc>
         <lastmod>2017-09-14T09:56:55+00:00</lastmod>
         <changefreq>monthly</changefreq>
     </url>
     <url>
-        <loc>http://blog.kiwitype.com/2018/creating-a-basic-dropwizard-microservice-in-kubernetes/</loc>
+        <loc>https://blog.kiwitype.com/2018/creating-a-basic-dropwizard-microservice-in-kubernetes/</loc>
         <lastmod>2018-03-09T05:26:14+00:00</lastmod>
         <changefreq>monthly</changefreq>
     </url>
     <url>
-        <loc>http://blog.kiwitype.com/2017/maven-versioning-in-a-continuous-delivery-pipeline/</loc>
+        <loc>https://blog.kiwitype.com/2017/maven-versioning-in-a-continuous-delivery-pipeline/</loc>
         <lastmod>2017-09-14T09:56:55+00:00</lastmod>
         <changefreq>monthly</changefreq>
     </url>
