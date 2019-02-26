@@ -59,16 +59,15 @@ With these differences in mind, we can see that a microservices architecture can
 * Failure of a service need not bring down the entire application and may result in only a small piece of functionality being affected 
 
 ## But at what cost? ##
-The advantages of microservices are compelling, but the reality is there is *significant* engineering work required to support such an architecture. As the 
-number of services grow you will find yourself needing to build an ecosystem that ensures these services can be:
+The advantages of microservices are compelling, but the reality is there is *significant* engineering work required to support such an architecture. As the number of services grow you will find yourself needing to build an ecosystem that ensures these services can be:
 
 * Connected together in a reliable and secure way
 * Built and deployed independently without breaking API contracts between services
 * Easy to debug and monitor
 
-For the remainder of this article I'll discuss what some of the. But first, a few points to mention:
+For the remainder of this article I'll attempt to itemize some of the engineering challenges you will encounter when building out a microservices architecture. But before this, a few points to mention:
 
-* I'll be exceptionally brief in discussing each item. Each item does not carry equal complexity, but probably each item could fill an entire blog post 
+* I will be exceptionally brief in discussing each item. Probably each item could fill an entire blog post 
 on its own. The point is to highlight how much needs to be thought about...
 
 * While some of the costs discussed will only be present in a microservices architecture, there are some that will also be present in a 
