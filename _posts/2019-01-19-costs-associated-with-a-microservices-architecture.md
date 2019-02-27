@@ -77,13 +77,19 @@ Ok, lets begin...
   
 ### Service Discovery ###
 ![Service Discovery]({{ site.url }}/assets/images/service-discovery.png){: .center-image }
-Microservices communicate with each other over the network and a service may need to call other services when processing a request. When a service needs to call another service it will therefore need a way to discover the network addresses of any services it depends on. Further to this, it is often the case that the number of services
-running is dynamic, services may come and go as they are auto scaled, restarted or perhaps when passing/failing a healthcheck. 
+As mentioned, microservices communicate with each other over the network and a service may need to call other services when processing a request. Such a service will therefore need to know about the network addresses for a service that it is to call. 
 
-To solve this we need to introduce some form of service registry that can be queried for the list of addresses for a target service. It is also important that
-this registry is continuously updated as the number of available services changes. 
+One option would be to hard-code these addresses into the services that need them. While this might work for a very small number of static services, it is not too difficult to see that as we increase the number of services that this solution quickly becomes unmanagable. Another problem with this solution is that it does not work particulary well when we have a dynamic environment. For example, we could imagine the addresses that we would want to use for a particular service changing due to:
 
-Given the critical nature of this, it is also important that we invest time in ensuring that it is highly available and well monitored. 
+* The number of instances of the service might change due to scaling events (and these could be manual or automated).
+* An instance of the service might restart or terminate 
+* The service might be running but failing a healthcheck
+
+To solve this problem we need to introduce a component into our architecture which is commonly referred to as a **service registry**. The service registry would contain a database of network addresses for each service, a mechanism for continuously updating the list of services and their addresses as these change, and of course a way to query for the addresses. Given we will often have multiple instances (and therefore addresses) for a given service, we also need a strategy for load balancing requests accross the available instances.
+
+It is easy to see that the service registry is a fairly critical piece of infrastructure within the microservices architecture. Without it, services will not be able to discover each other which will poentially cause many requests to fail. It may be possible to tolerate brief outages to the service registry through the use of address caching and retry logic within your services (which you'll need to implement of course), but really this needs to be a highly available and well monitored piece of infrastructure.
+
+And while there are tools out there to help prevent you from writing something from scratch (e.g. [KubeDNS](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/), [Consul](https://www.consul.io)), all of these still come with their own learning curve, integration work and operational overhead. 
 
 ### Error Handling ###
 Given our application is now distributed over a network, there is many network related failures that we will be more susceptible to and will now need to handle.
