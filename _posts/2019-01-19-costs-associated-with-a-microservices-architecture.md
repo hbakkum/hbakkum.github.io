@@ -69,9 +69,9 @@ For the remainder of this article I'll attempt to itemize some of the engineerin
 
 * I will be exceptionally brief in discussing each item. Full discussion of a single item could at least fill an entire blog post on its own. The point here is not a detailed explanation but rather to highlight that there is *a lot* to think about and do.
 
-* While some of the challenges discussed will only be relevant in a microservices architecture, there are some that may also be present in some degree within a monoliothic architecture too. However, you will find that as the number or services grow the complexitiy of each challenge will also increase.
+* While some of the challenges discussed will only be relevant in a microservices architecture, there are some that may also be present in some degree within a monoliothic architecture too. However, you will find that as the number or services grow that the complexitiy of each challenge will also increase.
 
-* Not all of these costs *have to* be realised and here may be strategies or comprimises that can be made to avoid some, particulary when you have a low number of services. However, you still need to spend time For example, you may get away with hard coded addresses for a smaller number of services, but as you add more services, this wil quickly become unmanagable.
+* Not all of these costs *have to* be realised and there may be strategies or compromises that can be made to avoid or mitigate some of them, particulary when you have a low number of services. That being said, to deal with just a subset of these issues is hard enough, and even if you manage to reduce or eliminate the effort on some, you still probably spent engineering hours in thinking and talking about it.
 
 Ok, lets begin...
   
