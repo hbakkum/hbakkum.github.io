@@ -65,7 +65,7 @@ The advantages of microservices are compelling, but the reality is there is *sig
 * Built and deployed independently without breaking API contracts between services
 * Easy to debug and monitor
 
-For the remainder of this article I'll attempt to itemize some of the engineering challenges you will encounter when building out a microservices architecture. But before this, a few points to mention:
+For the remainder of this article I'll attempt to itemize some of the engineering challenges you will encounter. But before this, a few points to mention:
 
 * I will be exceptionally brief in discussing each item. Proper discussion of a single item could at least fill an entire blog post on its own. The point here is not a detailed explanation, rather, to highlight that there is *a lot* to think about and do.
 
