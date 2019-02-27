@@ -67,25 +67,17 @@ The advantages of microservices are compelling, but the reality is there is *sig
 
 For the remainder of this article I'll attempt to itemize some of the engineering challenges you will encounter when building out a microservices architecture. But before this, a few points to mention:
 
-* I will be exceptionally brief in discussing each item. Probably each item could fill an entire blog post 
-on its own. The point is to highlight how much needs to be thought about...
+* I will be exceptionally brief in discussing each item. Proper discussion of a single item could at least fill an entire blog post on its own. The point here is not a detailed explanation, rather, to highlight that there is *a lot* to think about and do.
 
-* While some of the costs discussed will only be present in a microservices architecture, there are some that will also be present in a 
-monoliothic architecture too. However, the cost is exacerbated when running as microservices
+* While some of the challenges discussed will only be relevant in a microservices architecture, there are some that may also be present in some degree within a monoliothic architecture too. However, generally you will find that as the number or services grow the complexitiy of each challenge will grow.
 
-* Not all of these costs *have to* be realised.   There may be strategies to avoid some or  hvae small enough number opf services. and even a subset of 
-these will require signifdicant effort  
-
-For the remainder of this article I;ll discuss what some of these costs are. I should also note that it is not nesacarly true that all of these costs need
-to be borne or don't exist. And you'll need to deal with many of these even with only a handful of services.
-
+* Not all of these costs *have to* be realised. There may be strategies or comprimises. For example, you may get away with hard coded addresses for a smaller number of services, but as you add more services, this wil quickly become unmanagable.
 
 Ok, lets begin...
   
 ### Service Discovery ###
 ![Service Discovery]({{ site.url }}/assets/images/service-discovery.png){: .center-image }
-Microservices communicate with each other over the network and a service may need to call other services when processing a request. Such a service
-will therefore need a way to discover the network addresses of any services it depends on. Further to this, it is often the case that the number of services
+Microservices communicate with each other over the network and a service may need to call other services when processing a request. When a service needs to call another service it will therefore need a way to discover the network addresses of any services it depends on. Further to this, it is often the case that the number of services
 running is dynamic, services may come and go as they are auto scaled, restarted or perhaps when passing/failing a healthcheck. 
 
 To solve this we need to introduce some form of service registry that can be queried for the list of addresses for a target service. It is also important that
