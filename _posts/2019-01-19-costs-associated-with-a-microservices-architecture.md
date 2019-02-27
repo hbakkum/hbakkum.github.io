@@ -140,20 +140,3 @@ monolith, potentially
 
 # Further Reading #
 
-
-
-These microservices interact with each other via loosly coupled service interfaces (e.g. HTTP/REST). Changing one
-serice does not require releasing all services and we can run a different number of copies of service.
-
-would take this source code and build a single deployable artifact (e.g. a JAR or WAR file). Like any 
-well designed application there will be some degree of modularity within the source code and this is depicted with components A, B and C.
-These components interact with each other via in-process function calls. For example, in Java these dependencies could be via method calls on interfaces.
-If we wanted to release a change to a single component, this would require deploying the entire application. And while we can run multiple copies of the 
-application, this does require us to run all components.     
-
-A microservices architecture takes the modularity seen in the monolith a step further by splitting components into independent processes, a.k.a microservice. 
-In contrast to the monolith, each microservice would have its code in its own repository with a dedicated build process taking this source code and building
-a independnelyt deployable artifact. These microservices interact with each other via loosly coupled service interfaces (e.g. HTTP/REST). Changing one
-serice does not require releasing all services and we can run a different number of copies of service.
-
-Taking these differences into account, microservices can yield the following advantages over a monolith:
