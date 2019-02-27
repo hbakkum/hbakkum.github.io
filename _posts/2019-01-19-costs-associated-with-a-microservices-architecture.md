@@ -67,7 +67,7 @@ The advantages of microservices are compelling, but the reality is there is *sig
 
 For the remainder of this article I'll attempt to itemize some of the engineering challenges you will encounter. But before this, a few points to mention:
 
-* I will be exceptionally brief in discussing each item. Full discussion of a single item could at least fill an entire blog post on its own. The point here is not a detailed explanation but rather to highlight that there is *a lot* to think about and do.
+* I will be reasonbly brief in discussing each item. Full discussion of a single item could at least fill an entire blog post on its own. The point here is not a detailed explanation but rather to highlight that there is *a lot* to think about and do.
 
 * While some of the challenges discussed will only be relevant in a microservices architecture, there are some that may also be present to some degree within a monoliothic architecture as well. However, you will find that as the number or services grow that the complexity of each challenge will also increase.
 
