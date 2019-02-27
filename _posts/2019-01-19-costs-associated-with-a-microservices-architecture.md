@@ -83,6 +83,7 @@ One option would be to hard-code these addresses into the services that need the
 
 * The number of instances of the service might change due to scaling events (and these could be manual or automated).
 * An instance of the service might restart or terminate 
+* A new service deployment might use different network addresses for the instances
 * The service might be running but failing a healthcheck
 
 To solve this problem we need to introduce a component into our architecture which is commonly referred to as a **service registry**. The service registry would contain a database of network addresses for each service, a mechanism for continuously updating the list of services and their addresses as these change, and of course a way to query for the addresses. Given we will often have multiple instances (and therefore addresses) for a given service, we also need a strategy for load balancing requests accross the available instances.
