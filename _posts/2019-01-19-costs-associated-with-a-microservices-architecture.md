@@ -93,7 +93,7 @@ It is easy to see that the service registry is a fairly critical piece of infras
 And while there are tools out there to help prevent you from writing something from scratch (e.g. [KubeDNS](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/), [Consul](https://www.consul.io)), all of these still come with their own learning curve, integration work and operational overhead. 
 
 ### Error Handling ###
-Given our microservices application is now distributed over a network and that the network will at some point fail, we are likely to be more susceptible to these failures in comparison to the monolith. So if we choose not to implement any retry logic, we are probably left with a system that is less robust than the monolith. // also mention more nodes
+Given our microservices application is now distributed over a network and that the network will at some point fail, we are likely to be more susceptible to these failures in comparison to the monolith. So if we choose not to implement any retry logic, we are probably left with a system that is less robust than the monolith in the presecnes of netowrk issues. // also mention more nodes
 
 Another complication is that the number of error types also increases when we make network calls accross services. A service might be unavailable, timeout or crash while processing a request. The comm protocol may also return a number of dirrent error codes (HTTP status 1xx -> 5xx). In some of these cases, a retry might not actually be a good idea. For example, if I make a non idempotent request (e.g. HTTP POST) then a retry might result in a double submission.  
 
