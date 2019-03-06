@@ -296,7 +296,7 @@ An example of the plugins usage (see the [Resolve Parent Version Plugin](https:/
         <plugin>
           <groupId>com.hbakkum.maven.plugins</groupId>
           <artifactId>resolve-parent-version-maven-plugin</artifactId>
-          <version>0.6</version>
+          <version>0.8</version>
           <executions>
             <execution>
               <goals>
