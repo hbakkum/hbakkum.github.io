@@ -30,7 +30,7 @@ A monolithic architecture is shown on the left. Here one would typically expect 
 source repository with a build process consuming this code to produce a single deployable artifact (e.g. a JAR or WAR file) which runs within a single process. 
 
 Like any well designed application there will be some degree of modularity within the source code (as depicted by components A, B and C) and 
-components can communicate via in-process function calls. For example, we could imagine component A exposes an external interface (e.g. a HTTP/REST interface) and in the context of processing a 
+components can communicate via in-process function calls. For example, as depicted in the diagram, we could imagine component A exposes an external interface (e.g. a HTTP/REST interface) and in the context of processing a 
 request to this interface has dependencies on component C and (indirectly) B.
 
 As all components are still bundled into a single deployable artifact, making a change to any component will likely require a new deployment of the entire 
@@ -40,11 +40,11 @@ A microservices architecture takes the modularity seen in the monolith a step fu
 own source code repository with a dedicated build process consuming this to produce an artifact that can be deployed independently from the other services.
 
 Communication between services is done via network calls, often (but by no means exclusively) using HTTP/REST or perhaps asynchronously through some 
-messaging middleware (e.g. RabbitMQ). 
+messaging middleware (e.g. RabbitMQ, Google PubSub). 
 
 As services are more loosely coupled, it is possible to make and deploy a change to a service without having to redeploy any of the other services. 
 In addition to this, we can also choose to run a different number of instances of each service (as seen in the diagram, services A and B have one 
-instance each, while service B has two instances).
+instance each, while service C has two instances).
 
 With these differences in mind, we can see that a microservices architecture can yield the following advantages over a monolith:
 
@@ -76,14 +76,18 @@ For the remainder of this article I'll attempt to itemize some of the engineerin
 Ok, lets begin...
   
 ### Service Discovery ###
-![Service Discovery]({{ site.url }}/assets/images/service-discovery.png){: .center-image }
-As mentioned, microservices communicate with each other over the network and a service may need to call other services when processing a request. Such a service will therefore need to know about the network addresses for a service that it is to call. 
+![Service Discovery]({{ site.url }}/assets/images/microservices-service-discovery.png){: .center-image }
+As mentioned, microservices communicate with each other over the network and a service may need to call other services when processing a request. 
+Such a service will therefore need to know about the network addresses of the service(s) that it is to call. 
 
-One option would be to hard-code these addresses into the services that need them. While this might work for a very small number of static services, it is not too difficult to see that as we increase the number of services that this solution quickly becomes unmanagable. Another problem with this solution is that it does not work particulary well when we have a dynamic environment. For example, we could imagine the addresses that we would want to use for a particular service changing due to:
+One option would be to hard-code these addresses into the services that need them. While this might work for a very small number of static services, 
+it is not too difficult to see that as we increase the number of services that this solution quickly becomes unmanagable. Another problem with this solution is 
+that it does not work particularly well when we have a dynamic environment. For example, we could imagine the list of valid addresses for a service changing due to:
 
-* The number of instances of the service might change due to scaling events (and these could be manual or automated).
-* An instance of the service might restart or terminate 
-* A new service deployment might use different network addresses for the instances
+* An instance of the service might terminate
+* An instance of the service might restart and in some environments the same network address might not be used
+* Along these same lines, a new deployment of the service might not assign the same network address to the new instances 
+* The number of instances of the service might change due to scaling events (this could be manual or automated)
 * The service might be running but failing a healthcheck
 
 To solve this problem we need to introduce a component into our architecture which is commonly referred to as a **service registry**. The service registry would contain a database of network addresses for each service, a mechanism for continuously updating the list of services and their addresses as these change, and of course a way to query for the addresses. Given we will often have multiple instances (and therefore addresses) for a given service, we also need a strategy for load balancing requests accross the available instances.
@@ -93,15 +97,42 @@ It is easy to see that the service registry is a fairly critical piece of infras
 And while there are tools out there to help prevent you from writing something from scratch (e.g. [KubeDNS](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/), [Consul](https://www.consul.io)), all of these still come with their own learning curve, integration work and operational overhead. 
 
 ### Error Handling ###
-Given our microservices application is now distributed over a network and that the network will at some point fail (even if intermittantly/briefly), we are likely to be more susceptible to these failures in comparison to the monolith. So if we choose not to implement any retry logic, we are probably left with a system that is less robust than the monolith in the presecnes of netowrk issues. // also mention more nodes
+![Error Handling]({{ site.url }}/assets/images/microservices-error-handling.png){: .center-image }
+We can see that given our microservice application will consist of many services that interact across a network, that we will probably have more network nodes and more network chatter versus the monolith. We will therefore likely find 
+ourselves more susceptible to node and network failure. These failures are inescapable - they will at some point happen, even if briefly - and these will result in, for example, connection resets, connection/read timeouts and 
+partial responses. So in the absence of any retry logic, we might find ourselves less robust than the monolith. 
 
-Another complication is that the number of error types also increases when we make network calls accross services. A service might be unavailable, timeout or crash while processing a request. The comm protocol may also return a number of dirrent error codes (HTTP status 1xx -> 5xx). In some of these cases, a retry might not actually be a good idea. For example, if I make a non idempotent request (e.g. HTTP POST) then a retry might result in a double submission.  
+To complicate things further, the communications protocol used between services may come with its own set of error codes and semantics. For example, HTTP supports error codes 1xx through to 5xx as well as a number of different
+request methods. But we can't just use a blanket rule to retry everything. For example, does it make sense to retry when the response is in the 4xx range which indicates a client error? In many cases no, for example, if we get an HTTP
+status of 400 back from the server, this suggests the request is malformed and so if we retry, the request will likely just fail again. Also, if the failed request is not idempotent (e.g. an HTTP POST), then probably its not safe to retry the operation for risk of a double submission.  
 
-So you will need to decide what to do in these error scenarios (e.g. retry, circuit breaker) and then implement this by writing code or configuration. Again, there are libries that can help (e.g. hysterix) , but nothing comes for free. 
+Further to this, we might find that only a single instance of a service is in error while the rest of the instances are fine. Does it make sense to continue sending this instance requests? If it is timing out, then this will
+be contributing to some degradation in performance for some users, or it could be that if we stopped sending this instance traffic for a bit that it will recover on its own. This scenario is another aspect that our error 
+handling logic may want to consider.   
+
+So in summary you will need to decide what to do in these error scenarios (e.g. fail fast, retry/backoff, circuit breaker) and then implement this by writing code or configuration. Again, there are tools that can help 
+(e.g. [resilience4j](https://github.com/resilience4j/resilience4j)), but nothing comes for free - you will still need to invest time in learning these, agreeing on and implementing your error handling policies and 
+testing the scenarios. 
 
 And most likely you will want to be alerted when the failure rate crosses some threshold.
 
 ### Healthchecks and Monitoring ###
+![Healthchecks]({{ site.url }}/assets/images/microservices-healthcheck.png){: .center-image }
+Sure, we will need it too for a monolith, but this will be a more complex problem in a microservices architecture.
+
+For example, in kubernetes each service can define a healthcheck in a manifest file. If this fails for any instances, they will be removed from KubeDNS, etc. There is the k8s api to query
+for failures, but not much info re specific failure message.
+
+
+
+Multiple teams developing services independently - need to define conventions so each can integrate their healthchecks/metrics into the ecosystem
+Don't want to manually check these
+Need tight integration with service registry to a) find available services, b) update their status which may have the effect of taking them in/out of service.
+Need to expose API for a) monitoring software to query and b) developers to query
+Need a way to registry healthchecks in a consistent way
+Also need a way to monitor for errors in the system e.g. http error code counts etc.
+Define common way for scraping metrics from services
+
 More services means more healthchecks and processes that need to be monitored. Your probably going to want a central API to query all healthchecks
 for a DC/node/service.
 
@@ -116,19 +147,25 @@ any upstream services (e.g. by using a custom HTTP header). These services must 
 (as well as forwarding it on to any services it uses). 
 
 ### Security ###
-
+SSL, higher exposed API surface area, JWT
 
 ### Performance ###
 
 ### Build and Deploy ###
+Conventiosn, automation, how do we deploy multiple service changes (as aall componenents released at once on a monolith, then this is easier) - are we comfortable releasing like this for microservices
 
 ### Testing ###
+API contract testing + infrastructure
+Starting services harder for manual testing
+Chaos testing
 
 ### API Compatibility ###
 We no longer have the luxury of the compiler (in some cases) catching a broken interface...
 
 
 # Summary # 
+As you can see, you can build a lot and still have nothing that provides any value to your customers. 
+
 None of the problems listed are insormountable and many diffrent techniques and tools exist to help solve these. But even so, the point is that addressing even
 a subset of these problems requires implementation of said patterns and knowledge building and integration with said tools which quickly becomes a significant 
 engineering effort to implement and continouslky maintain these solutions. And in addition to this, I think its debatable whether most teams can actually get a 
