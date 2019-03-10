@@ -118,7 +118,46 @@ And most likely you will want to be alerted when the failure rate crosses some t
 
 ### Healthchecks and Monitoring ###
 ![Healthchecks]({{ site.url }}/assets/images/microservices-healthcheck.png){: .center-image }
-Sure, we will need it too for a monolith, but this will be a more complex problem in a microservices architecture.
+Sure, we will need these too for a monolith, but this will be a more complex problem in a microservices architecture. 
+
+For example, we could imagine in a simple monolithic application that requests to the application would first hit a reverse proxy which would the load balance each request accross  
+a fixed pool of application instances. The reverse proxy would also check the health of each instance and depending on the health status of each instance, 
+would either add or remove it from the pool. However in the microservices world our monolith will be split accross multiple services, each with a potentially dynamic number of instances and 
+the additional complexity that a request may span multiple different services. So you will need a mechanism to not only check the health of each service instance, but to also add or remove a 
+service instance form the list of available instances that can satisfy a request based on its health status.
+
+It is easy to see that in fact their will be tight integration between the healthcheck mechanism and your service registry as your healthcheck may need to use your service registry to get a 
+list of all available service instances and may also need to update the service registry when a service instance healthcheck status changes.
+
+In addition to this, each service will likely have its own healthcheck definitions and so you will need a way to allow the 
+
+A final feature you will probably want is an API that can be used to query the healthcheck status of all service instances. This can then be used by your monitoring system to raise alerts.
+It will also beb very usefukl in debugging issues. For example, it may help in identifying the cause of a failing set of heathchecks failures as the API response may show that the failures
+correspond to a failed datacenter or particular cloud service. 
+
+A summary of the above suggest you will need:
+
+1) A mechanism to discover all (both healthy and unhealthy) service instances in your microservices environment
+2) A means for each service to define what its healthchecks are 
+3) A mechanism for running the healthchecks against each service periodically and possibly on demand
+4) A way to update the list of service instances in the service registry that are available for satisfying a request (i.e. healthy services will be included in this list and unhealthy services will be removed)
+5) An API to query the current health status of service instances
+
+Kubernetes for example can help with this problem as it enables a developer to define healthcheck definitions inside of a manifest file for your microservice (pod?) which defines a 
+healthcheck that is custom to your service. Kubernetes will then periodically execute this healthcheck and update the status of each pod in 
+
+
+ provides an API for discovering all running service instances (i.e. pods) in a cluster,
+
+dynamic nodes too
+
+as we have seen in the section on service discovery,
+the number and network addresses of your microservices can be dynamic and so your healthcheck will need to take this into account. In addition to this, the number of available instances for
+a service will fluctuate as service instances either fail their healthchecks or recover from a previous fail.  
+
+
+You may have many different services accross multiple
+developement teams. Ideally you will want teams developing microservices to be able to declare the checks they want to occur on the service without having to write or manage the checking infrastructure themselves.
 
 For example, in kubernetes each service can define a healthcheck in a manifest file. If this fails for any instances, they will be removed from KubeDNS, etc. There is the k8s api to query
 for failures, but not much info re specific failure message.
@@ -133,7 +172,8 @@ Need a way to registry healthchecks in a consistent way
 Also need a way to monitor for errors in the system e.g. http error code counts etc.
 Define common way for scraping metrics from services
 
-More services means more healthchecks and processes that need to be monitored. Your probably going to want a central API to query all healthchecks
+More services means more healthchecks and processes that need to be monitored. Your probably going to want a central API to query all healthchecks. Can see for example if failing 
+healthcecks limited to a DC or particular cloud service.
 for a DC/node/service.
 
 Further too this, some integration will be required between healthcheck monitoring and your service registry. Something needs to check if a service is
@@ -154,10 +194,15 @@ SSL, higher exposed API surface area, JWT
 ### Build and Deploy ###
 Conventiosn, automation, how do we deploy multiple service changes (as aall componenents released at once on a monolith, then this is easier) - are we comfortable releasing like this for microservices
 
+maven archetype for example
+
+which nodes can you to deploy (k8s can solve).
+
 ### Testing ###
 API contract testing + infrastructure
 Starting services harder for manual testing
 Chaos testing
+What happens during rolling deployment (easier with monmolith - one application).
 
 ### API Compatibility ###
 We no longer have the luxury of the compiler (in some cases) catching a broken interface...
