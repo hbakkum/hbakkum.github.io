@@ -8,10 +8,10 @@ author: Hayden Bakkum
 visible: 0
 ---
 There is (still) a lot of industry hype surrounding microservices, and along with the hype, there is no shortage of shiny tools and 
-frameworks (think Kubernetes, AWS ECS, Istio, Envoy, Dropwizard, Spring Boot, ...) that tempt development teams towards building microservices.
+frameworks (Kubernetes, AWS ECS, Istio, Envoy, Dropwizard, Spring Boot, ...) that tempt development teams towards building microservices.
 
-While I do believe the benefits of a microservices architecture can be real, the reality is the cost associated with implementing and supporting the architecture 
-is usually very high. Because of this cost, I am skeptical that the majority of development teams will ever see a return on the investment that is required to build out a 
+While I do believe the benefits of a microservices architecture can be real, the reality is that the engineering costs associated with implementing and supporting the architecture 
+are usually very high. Because of this cost, I am skeptical that the majority of development teams will ever see a return on the investment that is required to build out a 
 fully fledged microservices architecture.  
 
 Further to this, I think microservices can often serve as a major distraction for development teams, causing them to focus their efforts on building out
@@ -46,7 +46,7 @@ As services are more loosely coupled, it is possible to make and deploy a change
 In addition to this, we can also choose to run a different number of instances of each service (as seen in the diagram, services A and B have one 
 instance each, while service C has two instances).
 
-With these differences in mind, we can see that a microservices architecture can yield the following advantages over a monolith:
+With these differences in mind, it can be argued that a microservices architecture may yield the following advantages over a monolith:
 
 * Smaller services are easier for developers to understand and faster to build/test/deploy, so feedback loops in the development process are tightened
 
@@ -67,13 +67,13 @@ The advantages of microservices are compelling, but the reality is there is *sig
 
 For the remainder of this article I'll attempt to itemize some of the engineering challenges you will encounter. But before this, a few points to mention:
 
-* I will be reasonbly brief in discussing each item. Full discussion of a single item could at least fill an entire blog post on its own. The point here is not a detailed explanation but rather to highlight that there is *a lot* to think about and do.
+* I will be reasonably brief in discussing each item. Full discussion of a single item could at least fill an entire blog post on its own. The point here is not a detailed explanation but rather to highlight that there is *a lot* to think about and do.
 
 * While some of the challenges discussed will only be relevant in a microservices architecture, there are some that may also be present to some degree within a monolithic architecture as well. However, you will find that as the number or services grow that the complexity of each challenge will also increase.
 
-* Not all of these costs *have to* be realised and there may be strategies or compromises that can be made to avoid or mitigate some of them, particulary when you have a low number of services. That being said, to deal with just a subset of these issues is hard enough, and even if you manage to reduce or eliminate the effort on some, you still probably spent engineering hours in thinking and talking about it.
+* Not all of these costs *have to* be realised and there may be strategies or compromises that can be made to avoid or mitigate some of them, particularly when you have a low number of services. That being said, to deal with just a subset of these issues is hard enough, and even if you manage to reduce or eliminate the effort on some, you still probably spent engineering hours in thinking and talking about it.
 
-Ok, lets begin...
+So let's begin...
   
 ### Service Discovery ###
 ![Service Discovery]({{ site.url }}/assets/images/microservices-service-discovery.png){: .center-image }
@@ -81,7 +81,7 @@ As mentioned, microservices communicate with each other over the network and a s
 Such a service will therefore need to know about the network addresses of the service(s) that it is to call. 
 
 One option would be to hard-code these addresses into the services that need them. While this might work for a very small number of static services, 
-it is not too difficult to see that as we increase the number of services that this solution quickly becomes unmanagable. Another problem with this solution is 
+it is not too difficult to see that as we increase the number of services that this solution quickly becomes unmanageable. Another problem with this solution is 
 that it does not work particularly well when we have a dynamic environment. For example, we could imagine the list of valid addresses for a service changing due to:
 
 * An instance of the service might terminate
@@ -114,70 +114,32 @@ So in summary you will need to decide what to do in these error scenarios (e.g. 
 (e.g. [resilience4j](https://github.com/resilience4j/resilience4j)), but nothing comes for free - you will still need to invest time in learning these, agreeing on and implementing your error handling policies and 
 testing the scenarios. 
 
-And most likely you will want to be alerted when the failure rate crosses some threshold.
-
 ### Healthchecks and Monitoring ###
 ![Healthchecks]({{ site.url }}/assets/images/microservices-healthcheck.png){: .center-image }
 Sure, we will need these too for a monolith, but this will be a more complex problem in a microservices architecture. 
 
-For example, we could imagine in a simple monolithic application that requests to the application would first hit a reverse proxy which would the load balance each request accross  
-a fixed pool of application instances. The reverse proxy would also check the health of each instance and depending on the health status of each instance, 
-would either add or remove it from the pool. However in the microservices world our monolith will be split accross multiple services, each with a potentially dynamic number of instances and 
-the additional complexity that a request may span multiple different services. So you will need a mechanism to not only check the health of each service instance, but to also add or remove a 
-service instance form the list of available instances that can satisfy a request based on its health status.
+For example, we could imagine that in a simple monolithic application requests to the application would first hit a load balancer which would then distribute requests across a fixed pool of application instances. 
+The load balancer could also check the health of each instance and depending on the health status of each instance, would either add or remove it from the pool. 
 
-It is easy to see that in fact their will be tight integration between the healthcheck mechanism and your service registry as your healthcheck may need to use your service registry to get a 
+However in the microservices world our monolith will be split across multiple services, with each service potentially consisting of a dynamic number of instances and 
+the additional complexity that a request to the application could also span more than one service. So you will need a mechanism to not only check the health of each service instance, but to also add or remove a 
+service instance from the list of available instances that can satisfy a request based on its health status.
+
+It is easy to see that in fact their will be tight integration between the healthcheck mechanism and your service registry as your healthcheck may need to use your service registry to get a complete
 list of all available service instances and may also need to update the service registry when a service instance healthcheck status changes.
 
-In addition to this, each service will likely have its own healthcheck definitions and so you will need a way to allow the 
+In addition to this, each service will likely have its own healthcheck definitions and so you will need to ensure there is a consistent way for developers to define and register healthchecks for the services they are responsible for. 
 
 A final feature you will probably want is an API that can be used to query the healthcheck status of all service instances. This can then be used by your monitoring system to raise alerts.
-It will also beb very usefukl in debugging issues. For example, it may help in identifying the cause of a failing set of heathchecks failures as the API response may show that the failures
-correspond to a failed datacenter or particular cloud service. 
+It will also be very useful in debugging issues. For example, the healthcheck API my help you isolate the cause of an application failure as the response could show that the failures correspond to a failed datacenter or particular cloud service. 
 
-A summary of the above suggest you will need:
+So in summary, your microservices ecosystem will likely need:
 
-1) A mechanism to discover all (both healthy and unhealthy) service instances in your microservices environment
-2) A means for each service to define what its healthchecks are 
-3) A mechanism for running the healthchecks against each service periodically and possibly on demand
-4) A way to update the list of service instances in the service registry that are available for satisfying a request (i.e. healthy services will be included in this list and unhealthy services will be removed)
-5) An API to query the current health status of service instances
-
-Kubernetes for example can help with this problem as it enables a developer to define healthcheck definitions inside of a manifest file for your microservice (pod?) which defines a 
-healthcheck that is custom to your service. Kubernetes will then periodically execute this healthcheck and update the status of each pod in 
-
-
- provides an API for discovering all running service instances (i.e. pods) in a cluster,
-
-dynamic nodes too
-
-as we have seen in the section on service discovery,
-the number and network addresses of your microservices can be dynamic and so your healthcheck will need to take this into account. In addition to this, the number of available instances for
-a service will fluctuate as service instances either fail their healthchecks or recover from a previous fail.  
-
-
-You may have many different services accross multiple
-developement teams. Ideally you will want teams developing microservices to be able to declare the checks they want to occur on the service without having to write or manage the checking infrastructure themselves.
-
-For example, in kubernetes each service can define a healthcheck in a manifest file. If this fails for any instances, they will be removed from KubeDNS, etc. There is the k8s api to query
-for failures, but not much info re specific failure message.
-
-
-
-Multiple teams developing services independently - need to define conventions so each can integrate their healthchecks/metrics into the ecosystem
-Don't want to manually check these
-Need tight integration with service registry to a) find available services, b) update their status which may have the effect of taking them in/out of service.
-Need to expose API for a) monitoring software to query and b) developers to query
-Need a way to registry healthchecks in a consistent way
-Also need a way to monitor for errors in the system e.g. http error code counts etc.
-Define common way for scraping metrics from services
-
-More services means more healthchecks and processes that need to be monitored. Your probably going to want a central API to query all healthchecks. Can see for example if failing 
-healthcecks limited to a DC or particular cloud service.
-for a DC/node/service.
-
-Further too this, some integration will be required between healthcheck monitoring and your service registry. Something needs to check if a service is
-healthy and remove from the registry. Number of services running / monitor this and alert. 
+* A mechanism to discover all (both healthy and unhealthy) service instances in your environment
+* A means for each service to define and register what its healthchecks are 
+* A mechanism for running the healthchecks against each service periodically and possibly on demand
+* A way to update the list of service instances in the service registry that are available for satisfying a request (i.e. healthy services will be included in this list and unhealthy services will be removed)
+* An API to query the current health status of service instances
 
 ### Logging ###
 Your application logs will now be split across your services and you will need a way to centralise these. Further to this, requests made to your application
@@ -229,3 +191,39 @@ monolith, potentially
 
 # Further Reading #
 
+
+Kubernetes for example can help with this problem as it enables a developer to define healthcheck definitions inside of a manifest file for your microservice (pod?) which defines a 
+healthcheck that is custom to your service. Kubernetes will then periodically execute this healthcheck and update the status of each pod in 
+
+
+ provides an API for discovering all running service instances (i.e. pods) in a cluster,
+
+dynamic nodes too
+
+as we have seen in the section on service discovery,
+the number and network addresses of your microservices can be dynamic and so your healthcheck will need to take this into account. In addition to this, the number of available instances for
+a service will fluctuate as service instances either fail their healthchecks or recover from a previous fail.  
+
+
+You may have many different services accross multiple
+developement teams. Ideally you will want teams developing microservices to be able to declare the checks they want to occur on the service without having to write or manage the checking infrastructure themselves.
+
+For example, in kubernetes each service can define a healthcheck in a manifest file. If this fails for any instances, they will be removed from KubeDNS, etc. There is the k8s api to query
+for failures, but not much info re specific failure message.
+
+
+
+Multiple teams developing services independently - need to define conventions so each can integrate their healthchecks/metrics into the ecosystem
+Don't want to manually check these
+Need tight integration with service registry to a) find available services, b) update their status which may have the effect of taking them in/out of service.
+Need to expose API for a) monitoring software to query and b) developers to query
+Need a way to registry healthchecks in a consistent way
+Also need a way to monitor for errors in the system e.g. http error code counts etc.
+Define common way for scraping metrics from services
+
+More services means more healthchecks and processes that need to be monitored. Your probably going to want a central API to query all healthchecks. Can see for example if failing 
+healthcecks limited to a DC or particular cloud service.
+for a DC/node/service.
+
+Further too this, some integration will be required between healthcheck monitoring and your service registry. Something needs to check if a service is
+healthy and remove from the registry. Number of services running / monitor this and alert. 
